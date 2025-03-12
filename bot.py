@@ -1,33 +1,51 @@
 from pyrogram import Client, filters
-from info import ADMINS
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+import os
+from info import API_ID, API_HASH, BOT_TOKEN, ADMINS
 
-@Client.on_inline_query()
+# مقداردهی `Client`
+bot = Client(
+    "my_bot",
+    api_id=int(API_ID),
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
+
+# اطمینان از اینکه ADMINS لیست عددی است
+if isinstance(ADMINS, str):
+    ADMINS = list(map(int, ADMINS.split()))
+elif isinstance(ADMINS, (list, tuple)):
+    ADMINS = list(map(int, ADMINS))
+else:
+    ADMINS = []
+
+@bot.on_inline_query()
 async def inline_query_handler(client, query):
     search = query.query.strip()
-    
     if not search:
         await query.answer([], cache_time=0)
         return
-    
-    results, _, total = await get_search_results(query.from_user.id, search)
 
+    results, _, total = await get_search_results(query.from_user.id, search)
     if not results:
         await query.answer([], cache_time=0)
         return
-    
+
     inline_results = []
     for result in results:
-        text = f"🎬 **{result['file_name']}**\n"
-        text += f"📅 **سال انتشار:** {result['year']}\n"
-        text += f"⭐ **امتیاز IMDb:** {result['rating']}\n"
-        text += f"🎭 **ژانر:** {result['genre']}\n"
-        text += f"🎬 **کارگردان:** {result['director']}\n"
-        text += f"👥 **بازیگران:** {result['actors']}\n\n"
-        text += f"📝 **خلاصه:** {result['summary']}\n\n"
-        text += f"📂 **حجم فایل:** {result['file_size']}\n"
-        if result['imdb_link']:
+        text = (
+            f"🎬 **{result['file_name']}**\n"
+            f"📅 **سال انتشار:** {result['year']}\n"
+            f"⭐ **امتیاز IMDb:** {result['rating']}\n"
+            f"🎭 **ژانر:** {result['genre']}\n"
+            f"🎬 **کارگردان:** {result['director']}\n"
+            f"👥 **بازیگران:** {result['actors']}\n\n"
+            f"📝 **خلاصه:** {result['summary']}\n\n"
+            f"📂 **حجم فایل:** {result['file_size']}\n"
+        )
+        if result.get('imdb_link'):
             text += f"🔗 [مشاهده در IMDb]({result['imdb_link']})\n"
-        
+
         buttons = [
             [InlineKeyboardButton("📺 مشاهده فصل‌ها", callback_data=f"seasons#{result['file_id']}")],
             [InlineKeyboardButton("📁 مشاهده کیفیت‌ها", callback_data=f"qualities#{result['file_id']}")],
@@ -44,16 +62,13 @@ async def inline_query_handler(client, query):
             description=f"{result['genre']} | {result['year']} | امتیاز: {result['rating']}⭐",
             input_message_content=InputTextMessageContent(text),
             reply_markup=InlineKeyboardMarkup(buttons),
-            thumb_url=result['poster'] if result['poster'] else None
+            thumb_url=result.get('poster')
         )
-
         inline_results.append(inline_result)
-    
+
     await query.answer(inline_results, cache_time=0)
 
-
-# کد مربوط به پنل مدیریت حرفه‌ای ربات
-@Client.on_message(filters.command("admin") & filters.user(ADMINS))
+@bot.on_message(filters.command("admin") & filters.user(ADMINS))
 async def admin_panel(client, message):
     text = "📊 **پنل مدیریت ربات**\n\n"
     text += "👥 **تعداد کاربران:** 12345\n"
@@ -61,43 +76,14 @@ async def admin_panel(client, message):
     text += "📥 **تعداد دانلودها:** 23456\n"
     text += "⭐ **کاربران VIP:** 100\n\n"
     text += "🔧 **مدیریت ربات:**\n"
-    
+
     buttons = [
         [InlineKeyboardButton("➕ افزودن فیلم جدید", callback_data="add_movie")],
         [InlineKeyboardButton("🛑 حذف فیلم", callback_data="delete_movie")],
         [InlineKeyboardButton("👤 مدیریت کاربران", callback_data="manage_users")],
         [InlineKeyboardButton("📊 مشاهده آمار", callback_data="stats")],
     ]
-
     await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-
-# کد مربوط به استریم آنلاین فیلم در ربات
-@Client.on_message(filters.regex(r"^🎥 تماشای آنلاین") & filters.private)
-async def stream_movie(client, message):
-    movie_id = message.text.split("#")[1]
-    movie_info = await get_movie_details(movie_id)
-
-    if not movie_info.get("stream_link"):
-        await message.reply("❌ این فیلم قابلیت پخش آنلاین ندارد.")
-        return
-
-    text = f"🎬 **{movie_info['title']}**\n\n"
-    text += f"🎥 **پخش آنلاین:** [تماشا کنید]({movie_info['stream_link']})"
-
-    await message.reply(text, disable_web_page_preview=False)
-
-
-# کد مربوط به مدیریت کاربران VIP
-@Client.on_message(filters.command("vip") & filters.user(ADMINS))
-async def manage_vip(client, message):
-    text = "⭐ **مدیریت کاربران VIP**\n\n"
-    text += "🔹 افزودن یا حذف کاربران VIP\n"
-    
-    buttons = [
-        [InlineKeyboardButton("➕ افزودن کاربر VIP", callback_data="add_vip")],
-        [InlineKeyboardButton("🛑 حذف کاربر VIP", callback_data="remove_vip")],
-        [InlineKeyboardButton("🔍 بررسی وضعیت VIP", callback_data="check_vip")],
-    ]
-
-    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
+if __name__ == "__main__":
+    bot.run()
